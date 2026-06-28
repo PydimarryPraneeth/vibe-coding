@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vibe Wealth — UPI Transaction Manager</title>
+  <meta name="description" content="Automated money manager that parses UPI transaction alerts, categorizes spending, and visualizes your financial habits with real-time analytics." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- ====== Header ====== -->
+  <header class="app-header" id="app-header">
+    <div class="app-brand">
+      <div class="logo-icon">💎</div>
+      <h1>Vibe Wealth</h1>
+    </div>
+    <div class="header-metrics">
+      <div class="metric-pill income" id="pill-income">
+        <span class="pill-label">Income</span>
+        <span class="pill-value" id="total-income">₹0</span>
+      </div>
+      <div class="metric-pill expense" id="pill-expense">
+        <span class="pill-label">Expenses</span>
+        <span class="pill-value" id="total-expense">₹0</span>
+      </div>
+      <div class="metric-pill balance" id="pill-balance">
+        <span class="pill-label">Net</span>
+        <span class="pill-value" id="total-balance">₹0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ====== Analytics Block ====== -->
+  <section class="analytics-section" id="analytics-section">
+    <h2>📊 Spending Categories</h2>
+    <div class="progress-grid" id="progress-grid">
+      <!-- Food & Dining -->
+      <div class="progress-card" id="pc-food">
+        <div class="card-header">
+          <div class="cat-icon food">🍔</div>
+          <div>
+            <div class="cat-name">Food & Dining</div>
+            <div class="cat-amount" id="cat-amount-food">₹0</div>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill food" id="pf-food"></div>
+        </div>
+      </div>
+      <!-- Travel -->
+      <div class="progress-card" id="pc-travel">
+        <div class="card-header">
+          <div class="cat-icon travel">✈️</div>
+          <div>
+            <div class="cat-name">Travel</div>
+            <div class="cat-amount" id="cat-amount-travel">₹0</div>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill travel" id="pf-travel"></div>
+        </div>
+      </div>
+      <!-- Salary -->
+      <div class="progress-card" id="pc-salary">
+        <div class="card-header">
+          <div class="cat-icon salary">💰</div>
+          <div>
+            <div class="cat-name">Salary</div>
+            <div class="cat-amount" id="cat-amount-salary">₹0</div>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill salary" id="pf-salary"></div>
+        </div>
+      </div>
+      <!-- Miscellaneous -->
+      <div class="progress-card" id="pc-misc">
+        <div class="card-header">
+          <div class="cat-icon misc">📦</div>
+          <div>
+            <div class="cat-name">Miscellaneous</div>
+            <div class="cat-amount" id="cat-amount-misc">₹0</div>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill misc" id="pf-misc"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== UPI Alert Input ====== -->
+  <section class="input-section" id="input-section">
+    <div class="input-card">
+      <h2>📨 Paste a UPI / Bank Alert</h2>
+      <p class="subtitle">Drop a raw transaction SMS or notification and watch it get parsed, categorized, and tracked automatically.</p>
+      <div class="input-row">
+        <textarea id="txn-input" placeholder='e.g. "Paid Rs. 250 to Zomato via UPI"'></textarea>
+        <button class="btn-add" id="btn-add">
+          <span>＋</span> Add
+        </button>
+      </div>
+      <div class="sample-btns" id="sample-btns">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== Transaction Stream ====== -->
+  <section class="stream-section" id="stream-section">
+    <h2>📜 Transaction Stream</h2>
+    <div class="transaction-list" id="transaction-list">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🏦</div>
+        <p>No transactions yet. Paste a UPI alert above or click a sample to get started.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
