@@ -1,6 +1,6 @@
 /* ===================================================================
-   VIBE WEALTH — Application Logic
-   Parsing engine · State management · Cumulative metric reducer
+   VIBE WEALTH — Application Engine v3
+   Parser · State · Reducer · Renderer · Toasts
    =================================================================== */
 
 (function () {
@@ -51,6 +51,14 @@
     'Credited Rs. 8,000 Freelance Payment from Upwork'
   ];
 
+  // ─── Category Styles ───────────────────────────────────────
+  const CAT_STYLES = {
+    'Food & Dining': { slug: 'food',   color: '#f59e0b', emoji: '🍔' },
+    'Travel':        { slug: 'travel', color: '#06b6d4', emoji: '✈️' },
+    'Salary':        { slug: 'salary', color: '#10b981', emoji: '💰' },
+    'Miscellaneous': { slug: 'misc',   color: '#8b5cf6', emoji: '📦' }
+  };
+
   // ─── Application State ─────────────────────────────────────
   let transactions = [];
   let nextId = 1;
@@ -60,20 +68,15 @@
   const btnAdd         = document.getElementById('btn-add');
   const sampleBtns     = document.getElementById('sample-btns');
   const txnList        = document.getElementById('transaction-list');
-  const emptyState     = document.getElementById('empty-state');
   const totalIncomeEl  = document.getElementById('total-income');
   const totalExpenseEl = document.getElementById('total-expense');
   const totalBalanceEl = document.getElementById('total-balance');
+  const toastContainer = document.getElementById('toast-container');
 
   // ───────────────────────────────────────────────────────────
-  //  PARSER: Extract structured data from raw UPI/SMS text
+  //  PARSER
   // ───────────────────────────────────────────────────────────
 
-  /**
-   * Parses a raw transaction string and returns a structured object.
-   * @param {string} raw  The raw SMS or UPI alert text
-   * @returns {object}    Parsed transaction data
-   */
   function parseTransaction(raw) {
     const text = raw.trim();
     const lower = text.toLowerCase();
@@ -84,18 +87,15 @@
       ? parseFloat(amountMatch[1].replace(/,/g, ''))
       : 0;
 
-    // 2. Determine direction (inflow vs outflow)
-    const outflowPatterns = /\b(paid|sent|debited|spent|deducted|debit|transferred|charged)\b/i;
-    const inflowPatterns  = /\b(received|credited|credit|added|deposited|refund|refunded)\b/i;
+    // 2. Direction
+    const outflowRe = /\b(paid|sent|debited|spent|deducted|debit|transferred|charged)\b/i;
+    const inflowRe  = /\b(received|credited|credit|added|deposited|refund|refunded)\b/i;
 
-    let type = 'outflow'; // default
-    if (inflowPatterns.test(lower)) {
-      type = 'inflow';
-    } else if (outflowPatterns.test(lower)) {
-      type = 'outflow';
-    }
+    let type = 'outflow';
+    if (inflowRe.test(lower))       type = 'inflow';
+    else if (outflowRe.test(lower)) type = 'outflow';
 
-    // 3. Auto-categorize by keyword matching
+    // 3. Auto-categorize
     let category = 'Miscellaneous';
     for (const [cat, keywords] of Object.entries(KEYWORD_MAP)) {
       if (keywords.some(kw => lower.includes(kw))) {
@@ -104,25 +104,24 @@
       }
     }
 
-    // 4. Build human-readable description
+    // 4. Description
     const description = buildDescription(text, amount, type);
 
-    // 5. Detect cashback / reward partner (Vibe Check)
+    // 5. Cashback / Savings detection
     let hasSavings = false;
     let savingsDetail = null;
     if (type === 'outflow' && amount > 0) {
-      const matchedPartner = REWARD_KEYWORDS.find(kw => lower.includes(kw));
-      if (matchedPartner) {
+      const partner = REWARD_KEYWORDS.find(kw => lower.includes(kw));
+      if (partner) {
         hasSavings = true;
-        const cashbackPercent = 5;
-        const cashbackAmount  = Math.round(amount * cashbackPercent / 100);
-        const rewardPoints    = Math.round(amount / 50) * 2; // 2 pts per ₹50
-        const partnerName     = matchedPartner.charAt(0).toUpperCase() + matchedPartner.slice(1);
+        const pct = 5;
+        const cashback = Math.round(amount * pct / 100);
+        const points   = Math.round(amount / 50) * 2;
         savingsDetail = {
-          cashbackAmount,
-          rewardPoints,
-          partnerName,
-          cashbackPercent
+          cashbackAmount: cashback,
+          rewardPoints: points,
+          partnerName: partner.charAt(0).toUpperCase() + partner.slice(1),
+          cashbackPercent: pct
         };
       }
     }
@@ -140,27 +139,18 @@
     };
   }
 
-  /**
-   * Creates a human-readable description from the raw text.
-   */
   function buildDescription(raw, amount, type) {
     const amtStr = formatCurrency(amount);
-
-    // Try to extract merchant / person name
-    // Patterns: "to <Name>", "from <Name>", "for <Purpose>"
-    let target = '';
     const toMatch   = raw.match(/(?:to|at)\s+(.+?)(?:\s+(?:via|using|through|on|for|$))/i);
     const fromMatch = raw.match(/(?:from)\s+(.+?)(?:\s+(?:via|using|through|on|as|for|$))/i);
     const forMatch  = raw.match(/(?:for)\s+(.+?)(?:\s+(?:via|using|through|on|$))/i);
 
     if (type === 'outflow') {
-      target = toMatch ? toMatch[1].trim() : (forMatch ? forMatch[1].trim() : '');
-      if (target) return `Paid ${amtStr} to ${target}`;
-      return `Paid ${amtStr}`;
+      const target = toMatch ? toMatch[1].trim() : (forMatch ? forMatch[1].trim() : '');
+      return target ? `Paid ${amtStr} to ${target}` : `Paid ${amtStr}`;
     } else {
-      target = fromMatch ? fromMatch[1].trim() : '';
-      if (target) return `Received ${amtStr} from ${target}`;
-      return `Received ${amtStr}`;
+      const target = fromMatch ? fromMatch[1].trim() : '';
+      return target ? `Received ${amtStr} from ${target}` : `Received ${amtStr}`;
     }
   }
 
@@ -169,17 +159,13 @@
   // ───────────────────────────────────────────────────────────
 
   function computeMetrics() {
-    let totalIncome  = 0;
-    let totalExpense = 0;
-    const catTotals  = {};
+    let totalIncome = 0, totalExpense = 0;
+    const catTotals = {};
     CATEGORIES.forEach(c => catTotals[c] = 0);
 
     transactions.forEach(txn => {
-      if (txn.type === 'inflow') {
-        totalIncome += txn.amount;
-      } else {
-        totalExpense += txn.amount;
-      }
+      if (txn.type === 'inflow') totalIncome  += txn.amount;
+      else                       totalExpense += txn.amount;
       catTotals[txn.category] = (catTotals[txn.category] || 0) + txn.amount;
     });
 
@@ -198,43 +184,56 @@
   function renderMetrics() {
     const m = computeMetrics();
 
-    totalIncomeEl.textContent  = formatCurrency(m.totalIncome);
-    totalExpenseEl.textContent = formatCurrency(m.totalExpense);
-    totalBalanceEl.textContent = (m.balance >= 0 ? '' : '- ') + formatCurrency(Math.abs(m.balance));
+    animateValue(totalIncomeEl,  m.totalIncome);
+    animateValue(totalExpenseEl, m.totalExpense);
+    animateValue(totalBalanceEl, Math.abs(m.balance), m.balance < 0 ? '- ' : '');
 
-    // Category amounts & progress bars
     const maxCat = Math.max(...Object.values(m.catTotals), 1);
 
-    const slugMap = {
-      'Food & Dining': 'food',
-      'Travel':        'travel',
-      'Salary':        'salary',
-      'Miscellaneous': 'misc'
-    };
-
     CATEGORIES.forEach(cat => {
-      const slug = slugMap[cat];
-      const amountEl = document.getElementById(`cat-amount-${slug}`);
-      const fillEl   = document.getElementById(`pf-${slug}`);
+      const s = CAT_STYLES[cat];
+      const amountEl = document.getElementById(`cat-amount-${s.slug}`);
+      const fillEl   = document.getElementById(`pf-${s.slug}`);
       if (amountEl) amountEl.textContent = formatCurrency(m.catTotals[cat]);
       if (fillEl)   fillEl.style.width   = Math.min((m.catTotals[cat] / maxCat) * 100, 100) + '%';
     });
   }
 
+  function animateValue(el, target, prefix = '') {
+    const current = parseInt(el.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+    if (current === target) { el.textContent = prefix + formatCurrency(target); return; }
+
+    const duration = 400;
+    const startTime = performance.now();
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      const value = Math.round(current + (target - current) * eased);
+      el.textContent = prefix + formatCurrency(value);
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
   function renderTransactionList() {
-    // Keep only transaction cards, remove stale ones
     txnList.innerHTML = '';
 
     if (transactions.length === 0) {
       txnList.innerHTML = `
         <div class="empty-state" id="empty-state">
-          <div class="empty-icon">🏦</div>
-          <p>No transactions yet. Paste a UPI alert above or click a sample to get started.</p>
+          <div class="empty-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".3">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+            </svg>
+          </div>
+          <p class="empty-title">No transactions yet</p>
+          <p>Paste a UPI alert above or click a sample to get started.</p>
         </div>`;
       return;
     }
 
-    // Render newest-first
     const sorted = [...transactions].reverse();
     sorted.forEach((txn, idx) => {
       const card = createTxnCard(txn, idx);
@@ -244,16 +243,17 @@
 
   function createTxnCard(txn, idx) {
     const card = document.createElement('div');
-    card.className = 'txn-card';
+    const isOut = txn.type === 'outflow';
+    card.className = `txn-card ${isOut ? 'outflow-card' : 'inflow-card'}`;
     card.id = `txn-${txn.id}`;
     card.style.animationDelay = `${idx * 0.04}s`;
 
-    const isOut = txn.type === 'outflow';
-    const sign  = isOut ? '−' : '+';
-    const cls   = isOut ? 'outflow' : 'inflow';
-    const icon  = isOut ? '↗' : '↙';
+    const sign = isOut ? '−' : '+';
+    const cls  = isOut ? 'outflow' : 'inflow';
+    const icon = isOut
+      ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>'
+      : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>';
 
-    // Build category <select>
     const optionsHtml = CATEGORIES.map(cat =>
       `<option value="${cat}" ${cat === txn.category ? 'selected' : ''}>${cat}</option>`
     ).join('');
@@ -281,7 +281,7 @@
             <div class="txn-raw">${escapeHtml(txn.raw)}</div>
             <div class="txn-meta">
               <span class="txn-time">${formatTime(txn.timestamp)}</span>
-              <select class="cat-select" data-txn-id="${txn.id}" aria-label="Category selector for transaction ${txn.id}">
+              <select class="cat-select" data-txn-id="${txn.id}" aria-label="Category for transaction ${txn.id}">
                 ${optionsHtml}
               </select>
             </div>
@@ -289,31 +289,55 @@
         </div>
         <div class="txn-right">
           <span class="txn-amount ${cls}">${sign} ${formatCurrency(txn.amount)}</span>
-          <button class="btn-delete" data-txn-id="${txn.id}" title="Delete transaction" aria-label="Delete transaction ${txn.id}">✕</button>
+          <button class="btn-delete" data-txn-id="${txn.id}" title="Delete" aria-label="Delete transaction ${txn.id}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
       ${savingsHtml}`;
 
-    // Event: category change
-    const select = card.querySelector('.cat-select');
-    select.addEventListener('change', (e) => {
+    // Category change
+    card.querySelector('.cat-select').addEventListener('change', (e) => {
       const id = parseInt(e.target.dataset.txnId, 10);
-      const txnObj = transactions.find(t => t.id === id);
-      if (txnObj) {
-        txnObj.category = e.target.value;
-        renderMetrics(); // Re-compute metrics only
+      const t = transactions.find(x => x.id === id);
+      if (t) {
+        const oldCat = t.category;
+        t.category = e.target.value;
+        renderMetrics();
+        showToast(`Moved to ${e.target.value}`, 'info', '🏷️');
       }
     });
 
-    // Event: delete
-    const delBtn = card.querySelector('.btn-delete');
-    delBtn.addEventListener('click', (e) => {
-      const id = parseInt(e.target.dataset.txnId, 10);
-      transactions = transactions.filter(t => t.id !== id);
-      renderAll();
+    // Delete
+    card.querySelector('.btn-delete').addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const id = parseInt(btn.dataset.txnId, 10);
+      const cardEl = document.getElementById(`txn-${id}`);
+      if (cardEl) {
+        cardEl.style.transition = 'all .35s var(--ease-out)';
+        cardEl.style.opacity = '0';
+        cardEl.style.transform = 'translateX(40px) scale(.95)';
+        setTimeout(() => {
+          transactions = transactions.filter(x => x.id !== id);
+          renderAll();
+          showToast('Transaction removed', 'warning', '🗑️');
+        }, 350);
+      }
     });
 
     return card;
+  }
+
+  // ───────────────────────────────────────────────────────────
+  //  TOAST SYSTEM
+  // ───────────────────────────────────────────────────────────
+
+  function showToast(message, type = 'info', icon = 'ℹ️') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+    toastContainer.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 3200);
   }
 
   // ───────────────────────────────────────────────────────────
@@ -324,15 +348,22 @@
     if (!rawText || !rawText.trim()) return;
     const txn = parseTransaction(rawText);
     if (txn.amount === 0) {
-      // Still add it, but flag the amount issue visually
       txn.description = txn.type === 'outflow'
-        ? `Paid ₹0 (could not parse amount)`
-        : `Received ₹0 (could not parse amount)`;
+        ? 'Paid ₹0 (could not parse amount)'
+        : 'Received ₹0 (could not parse amount)';
     }
     transactions.push(txn);
     renderAll();
     txnInput.value = '';
     txnInput.focus();
+
+    const catStyle = CAT_STYLES[txn.category];
+    const typeLabel = txn.type === 'inflow' ? 'Received' : 'Paid';
+    showToast(
+      `${typeLabel} ${formatCurrency(txn.amount)} → ${txn.category}`,
+      txn.type === 'inflow' ? 'success' : 'info',
+      txn.type === 'inflow' ? '📥' : '📤'
+    );
   }
 
   btnAdd.addEventListener('click', () => addTransaction(txnInput.value));
@@ -348,7 +379,7 @@
   SAMPLE_MSGS.forEach(msg => {
     const btn = document.createElement('button');
     btn.className = 'btn-sample';
-    btn.textContent = msg.length > 45 ? msg.slice(0, 42) + '…' : msg;
+    btn.textContent = msg.length > 44 ? msg.slice(0, 41) + '…' : msg;
     btn.title = msg;
     btn.addEventListener('click', () => {
       txnInput.value = msg;
@@ -372,18 +403,20 @@
   }
 
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
   }
 
-  // ─── Seed with a few transactions on load ──────────────────
+  // ─── Seed data ──────────────────────────────────────────────
   const SEED = [
     'Received Rs. 45,000 from Acme Corp Salary',
     'Paid Rs. 250 to Zomato via UPI',
     'Sent Rs. 350 to Uber using UPI',
     'Paid Rs. 999 to Swiggy via Cred Cashback',
-    'Rs. 500 received from Ravi Kumar via GPay'
+    'Rs. 500 received from Ravi Kumar via GPay',
+    'Paid Rs. 1,500 to MakeMyTrip for flight booking',
+    'Sent Rs. 200 to Dominos Pizza via Amazon Pay'
   ];
   SEED.forEach(msg => {
     const txn = parseTransaction(msg);
